@@ -1,0 +1,27 @@
+==================================================
+NotesApp/            -> projet React Native (Expo) complet
+  App.js
+  screens/HomeScreen.js, NotesScreen.js
+  components/NoteItem.js, NoteInput.js
+notes_app/lib/       -> code Flutter (main.dart, screens/, components/)
+etapes/              -> versions "avant refactoring" (addNote / renderNote)
+
+==================================================
+ REACT NATIVE  (CMD)
+==================================================
+cd C:\CP\NotesApp-TP\NotesApp
+npm install
+npx expo install react-native-screens react-native-safe-area-context react-native-gesture-handler
+npx expo start -c
+
+(Ken QR ma ykhdemch:  npx expo start --tunnel)
+
+==================================================
+ FLUTTER  (CMD)
+==================================================
+flutter create notes_app
+cd notes_app
+rmdir /s /q lib
+xcopy /E /I C:\CP\NotesApp-TP\notes_app\lib lib
+flutter doctor
+flutter run
