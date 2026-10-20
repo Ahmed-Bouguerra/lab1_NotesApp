@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/note.dart';
 
 class NoteItem extends StatelessWidget {
-  final Map<String, dynamic> note;
-  final Function(Map<String, dynamic>) onEdit;
-  final Function(String) onDelete;
+  final Note note;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const NoteItem({
     Key? key,
@@ -33,7 +34,7 @@ class NoteItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              note['content'],
+              note.content,
               style: TextStyle(fontSize: 16),
             ),
             SizedBox(height: 10),
@@ -41,14 +42,14 @@ class NoteItem extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => onEdit(note),
+                  onPressed: onEdit,
                   child: Text(
                     'Edit',
                     style: TextStyle(color: Colors.blue),
                   ),
                 ),
                 TextButton(
-                  onPressed: () => onDelete(note['id']),
+                  onPressed: onDelete,
                   child: Text(
                     'Delete',
                     style: TextStyle(color: Colors.red),

@@ -1,6 +1,9 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../components/note_item.dart';
 import '../components/note_input_dialog.dart';
+import '../models/note.dart';
+import '../services/notes_service.dart';
 
 class NotesScreen extends StatefulWidget {
   const NotesScreen({Key? key}) : super(key: key);
@@ -10,79 +13,164 @@ class NotesScreen extends StatefulWidget {
 }
 
 class _NotesScreenState extends State<NotesScreen> {
-  // Sample initial notes data
-  List<Map<String, dynamic>> notes = [
-    {
-      'id': '1',
-      'content': 'Learn Flutter',
-      'createdAt': DateTime.now().toIso8601String(),
-    },
-    {
-      'id': '2',
-      'content': 'Complete the tutorial',
-      'createdAt': DateTime.now().toIso8601String(),
-    },
-  ];
+  List<Note> notes = [];
+  bool loading = true;
+  String? error;
 
-  // Controllers and state variables
   TextEditingController noteController = TextEditingController();
-  Map<String, dynamic>? editingNote;
 
-  // Function to save a new or updated note
-  void saveNote() {
-    if (noteController.text.trim().isEmpty) return;
+  @override
+  void initState() {
+    super.initState();
+    loadNotes();
+  }
 
+  // Load notes from Firestore
+  Future<void> loadNotes() async {
     setState(() {
-      if (editingNote != null) {
-        // Update existing note
-        for (int i = 0; i < notes.length; i++) {
-          if (notes[i]['id'] == editingNote!['id']) {
-            notes[i] = {
-              ...notes[i],
-              'content': noteController.text,
-              'updatedAt': DateTime.now().toIso8601String(),
-            };
-            break;
-          }
-        }
-        editingNote = null;
-      } else {
-        // Add new note
-        final newNote = {
-          'id': DateTime.now().millisecondsSinceEpoch.toString(),
-          'content': noteController.text,
-          'createdAt': DateTime.now().toIso8601String(),
-        };
-        notes.insert(0, newNote);
-      }
+      loading = true;
+      error = null;
     });
-
-    noteController.clear();
+    try {
+      final result = await notesService.list();
+      if (!mounted) return;
+      setState(() => notes = result);
+    } on FirebaseException catch (e) {
+      if (!mounted) return;
+      setState(() => error = e.message ?? 'Could not load notes');
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
-  // Function to delete a note
-  void deleteNote(String id) {
-    setState(() {
-      notes.removeWhere((note) => note['id'] == id);
-    });
+  void showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
-  // Function to open edit mode
-  void editNote(Map<String, dynamic> note) {
-    editingNote = note;
-    noteController.text = note['content'];
-    showNoteDialog();
-  }
-
-  // Show dialog for adding/editing notes
-  void showNoteDialog() {
-    showDialog(
+  // Open the dialog and return the typed text (null if cancelled)
+  Future<String?> askText({Note? initial}) {
+    noteController.text = initial?.content ?? '';
+    return showDialog<String>(
       context: context,
       builder: (context) => NoteInputDialog(
         controller: noteController,
-        isEditing: editingNote != null,
-        onSave: saveNote,
+        isEditing: initial != null,
       ),
+    );
+  }
+
+  // Add a new note
+  Future<void> addNote() async {
+    final text = await askText();
+    if (text == null || text.isEmpty) return;
+    try {
+      final created = await notesService.create(text);
+      if (!mounted) return;
+      setState(() => notes.insert(0, created));
+    } on FirebaseException catch (e) {
+      showError(e.message ?? 'Could not save the note');
+    }
+  }
+
+  // Edit an existing note
+  Future<void> editNote(Note note) async {
+    final text = await askText(initial: note);
+    if (text == null || text.isEmpty) return;
+    try {
+      final updated = await notesService.update(note.id, text);
+      if (!mounted) return;
+      setState(() {
+        final index = notes.indexWhere((n) => n.id == note.id);
+        if (index != -1) notes[index] = updated;
+      });
+    } on FirebaseException catch (e) {
+      showError(e.message ?? 'Could not update the note');
+    }
+  }
+
+  // Delete a note (with confirmation)
+  Future<void> deleteNote(Note note) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete note'),
+        content: Text('Delete "${note.content}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await notesService.delete(note.id);
+      if (!mounted) return;
+      setState(() => notes.removeWhere((n) => n.id == note.id));
+    } on FirebaseException catch (e) {
+      showError(e.message ?? 'Could not delete the note');
+    }
+  }
+
+  Widget buildBody() {
+    if (loading && notes.isEmpty) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(error!, textAlign: TextAlign.center),
+            SizedBox(height: 12),
+            ElevatedButton(onPressed: loadNotes, child: Text('Retry')),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: loadNotes,
+      child: notes.isEmpty
+          ? ListView(
+              children: [
+                Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(
+                    child: Text(
+                      'No notes yet. Create one!',
+                      style: TextStyle(
+                        fontSize: 18,
+                        color: Color(0xFF7F8C8D),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : ListView.builder(
+              padding: EdgeInsets.all(15),
+              itemCount: notes.length,
+              itemBuilder: (context, index) {
+                final note = notes[index];
+                return NoteItem(
+                  key: ValueKey(note.id),
+                  note: note,
+                  onEdit: () => editNote(note),
+                  onDelete: () => deleteNote(note),
+                );
+              },
+            ),
     );
   }
 
@@ -113,11 +201,7 @@ class _NotesScreenState extends State<NotesScreen> {
                   ),
                 ),
                 InkWell(
-                  onTap: () {
-                    editingNote = null;
-                    noteController.clear();
-                    showNoteDialog();
-                  },
+                  onTap: addNote,
                   child: Container(
                     width: 36,
                     height: 36,
@@ -141,30 +225,7 @@ class _NotesScreenState extends State<NotesScreen> {
             ),
           ),
 
-          // Notes list or empty state
-          Expanded(
-            child: notes.isNotEmpty
-                ? ListView.builder(
-                    padding: EdgeInsets.all(15),
-                    itemCount: notes.length,
-                    itemBuilder: (context, index) {
-                      return NoteItem(
-                        note: notes[index],
-                        onEdit: editNote,
-                        onDelete: deleteNote,
-                      );
-                    },
-                  )
-                : Center(
-                    child: Text(
-                      'No notes yet. Create one!',
-                      style: TextStyle(
-                        fontSize: 18,
-                        color: Color(0xFF7F8C8D),
-                      ),
-                    ),
-                  ),
-          ),
+          Expanded(child: buildBody()),
         ],
       ),
     );
@@ -172,7 +233,6 @@ class _NotesScreenState extends State<NotesScreen> {
 
   @override
   void dispose() {
-    // Clean up the controller when the widget is disposed
     noteController.dispose();
     super.dispose();
   }

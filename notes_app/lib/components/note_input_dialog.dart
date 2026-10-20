@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 
+/// Returns the typed text with Navigator.pop, or null if the user cancels.
 class NoteInputDialog extends StatelessWidget {
   final TextEditingController controller;
   final bool isEditing;
-  final Function() onSave;
 
   const NoteInputDialog({
     Key? key,
     required this.controller,
     required this.isEditing,
-    required this.onSave,
   }) : super(key: key);
 
   @override
@@ -32,10 +31,7 @@ class NoteInputDialog extends StatelessWidget {
           style: TextButton.styleFrom(foregroundColor: Colors.grey),
         ),
         TextButton(
-          onPressed: () {
-            onSave();
-            Navigator.pop(context);
-          },
+          onPressed: () => Navigator.pop(context, controller.text.trim()),
           child: Text('Save'),
           style: TextButton.styleFrom(foregroundColor: Colors.blue),
         ),
